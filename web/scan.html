@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>20/55 选股</title>
+<style>
+  :root {
+    --bg: #0b1020; --panel: #121a2e; --panel2: #18223a; --line: #24304d;
+    --text: #e6ebf5; --muted: #8b97b3; --accent: #6c8cff; --accent2: #9b6cff;
+    --up: #ff5d6c; --down: #22c58b; --warn: #ffb547;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; color: var(--text);
+    background: radial-gradient(1200px 600px at 10% -10%, #1b2550 0%, transparent 60%), var(--bg);
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+  button, input, select { font: inherit; color: var(--text); }
+  button { cursor: pointer; border: 0; border-radius: 10px; padding: 8px 14px; background: var(--panel2); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  .primary { background: linear-gradient(135deg, var(--accent), var(--accent2)); font-weight: 700; }
+  input, select { background: #0d1428; border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; width: 100%; }
+  header { display: flex; align-items: center; gap: 14px; padding: 14px 22px; border-bottom: 1px solid var(--line); }
+  header h1 { margin: 0; font-size: 17px; }
+  header small, .muted { color: var(--muted); }
+  .spacer { flex: 1; }
+  a.nav { color: var(--muted); text-decoration: none; font-size: 13px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); }
+  .strategy { width: 280px; font-weight: 700; }
+  main { display: grid; grid-template-columns: 340px 1fr; gap: 16px; padding: 16px 22px 28px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; }
+  .side { padding: 16px; display: grid; gap: 10px; align-content: start; }
+  label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .desc { color: var(--muted); font-size: 12px; min-height: 36px; }
+  #log { max-height: 180px; overflow: auto; background: #0a0f1e; border-radius: 8px; padding: 8px; font: 12px/1.5 var(--mono); color: #c7b6ff; white-space: pre-wrap; }
+  .stats { display: flex; gap: 8px; padding: 14px; flex-wrap: wrap; }
+  .stat { background: var(--panel2); border-radius: 10px; padding: 8px 12px; min-width: 110px; }
+  .stat b { display: block; font-family: var(--mono); font-size: 18px; }
+  .tools { display: flex; gap: 10px; padding: 0 14px 12px; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { padding: 9px 12px; border-top: 1px solid var(--line); text-align: left; white-space: nowrap; }
+  th { color: var(--muted); font-size: 12px; cursor: pointer; }
+  .up { color: var(--up); font-weight: 700; } .down { color: var(--down); font-weight: 700; }
+  .code { font-family: var(--mono); }
+  .hold { color: var(--up); font-size: 12px; }
+  .empty { color: var(--muted); text-align: center; padding: 48px 16px; }
+  @media (max-width: 980px) { main { grid-template-columns: 1fr; } .strategy { width: 180px; } }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>20/55 选股</h1>
+    <small id="meta">默认扫描全部股票，最近 2 年</small>
+  </div>
+  <div class="spacer"></div>
+  <a class="nav" href="/">五线探戈</a>
+  <a class="nav" href="/bond.html">粘合突破</a>
+  <label style="width:280px">
+    <select id="strategy" class="strategy"></select>
+  </label>
+</header>
+<main>
+  <aside class="card side">
+    <p class="desc" id="desc">切换右上角策略，会换成对应的过滤规则。下面的年限和指标对每一套都生效。</p>
+    <div class="grid">
+      <label>回测年数<input id="years" type="number" min="0.5" max="30" step="0.5" value="2"></label>
+      <label>股票数量<input id="limit" type="number" min="1" step="1" placeholder="留空=全部"></label>
+      <label>短均线<input id="ma_fast" type="number" min="1" step="1" value="20"></label>
+      <label>长均线<input id="ma_slow" type="number" min="2" step="1" value="55"></label>
+      <label>年线<input id="ma_trend" type="number" min="1" step="1" value="250"></label>
+      <label>硬止损<input id="stop_loss_pct" type="number" min="0" max="1" step="0.01" value="0.08"></label>
+      <label title="最高浮盈回吐这么多就清仓。0.10 表示赚到 30% 时跌回 20% 走，再涨到 60% 则守住 50%">移动止盈回吐<input id="trail_gap_pct" type="number" min="0" max="1" step="0.01" value="0.10"></label>
+      <label>MACD 快<input id="macd_fast" type="number" min="1" step="1" value="12"></label>
+      <label>MACD 慢<input id="macd_slow" type="number" min="2" step="1" value="26"></label>
+      <label>DEA<input id="macd_signal" type="number" min="1" step="1" value="9"></label>
+    </div>
+    <div class="grid" id="flags"></div>
+    <button id="btnScan" class="primary">全库扫描</button>
+    <div id="log">还没有扫描。点「全库扫描」后，五套策略会一起跑完，再用右上角下拉框切换结果。</div>
+  </aside>
+  <section class="card">
+    <div class="stats">
+      <div class="stat"><span class="muted">选出</span><b id="stCount">0</b></div>
+      <div class="stat"><span class="muted">持仓中</span><b id="stHold">0</b></div>
+      <div class="stat"><span class="muted">平均收益</span><b id="stRet">—</b></div>
+      <div class="stat"><span class="muted">平均胜率</span><b id="stWin">—</b></div>
+    </div>
+    <div class="tools"><input id="q" type="search" placeholder="搜索代码或名称" style="max-width:260px"></div>
+    <div style="overflow:auto">
+      <table>
+        <thead>
+          <tr>
+            <th data-k="symbol">代码</th><th data-k="name">名称</th><th data-k="latest_close">收盘</th>
+            <th data-k="latest_signal_date">最近买点</th><th data-k="total_trades">次数</th>
+            <th data-k="win_rate">胜率</th><th data-k="total_return_pct">累计收益</th>
+            <th data-k="max_drawdown_pct">回撤</th><th data-k="profit_loss_ratio">盈亏比</th><th>状态</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+      <div class="empty" id="empty">扫描完成后，这里列出该策略选出的股票。</div>
+    </div>
+  </section>
+</main>
+<script>
+const API = new URLSearchParams(location.search).get("api") || "";
+const FLAGS = [
+  ["use_macd_zero", "MACD 0轴上"],
+  ["use_macd_bar_pos", "开仓要红柱"],
+  ["use_ma250_trend", "站上年线"],
+  ["exit_on_ma_cross", "均线死叉卖"],
+  ["exit_on_macd_dead", "MACD死叉卖"],
+  ["exit_on_bar_green", "红柱变绿卖"],
+];
+const SHORT = {
+  strat_0_pure_ma: "策略0 · 纯20/55",
+  strat_a_basic: "策略A · 0轴上",
+  strat_b_macd_exit: "策略B · 移动止盈",
+  strat_c_trend_250: "策略C · 250年线",
+  strat_d_strict_all: "策略D · 移动止盈",
+};
+const $ = (id) => document.getElementById(id);
+let presets = [];
+let result = null;
+let sortKey = "total_return_pct";
+let sortAsc = false;
+let prevKey = "";
+const flagEdits = {};
+
+function presetByKey(key) {
+  return presets.find((item) => item && item.key === key) || null;
+}
+
+function readFlags() {
+  const out = {};
+  for (const [key] of FLAGS) {
+    const el = document.querySelector(`[data-flag="${key}"]`);
+    out[key] = el ? Number(el.value) : 0;
+  }
+  return out;
+}
+
+function fillFlags(params) {
+  const box = $("flags");
+  box.innerHTML = "";
+  for (const [key, label] of FLAGS) {
+    const on = params && params[key] ? "1" : "0";
+    const wrap = document.createElement("label");
+    wrap.innerHTML = `${label}<select data-flag="${key}"><option value="1">启用</option><option value="0">关闭</option></select>`;
+    box.appendChild(wrap);
+    wrap.querySelector("select").value = on;
+  }
+}
+
+function fillNumbers(params) {
+  if (!params) return;
+  for (const key of ["ma_fast", "ma_slow", "ma_trend", "macd_fast", "macd_slow", "macd_signal", "stop_loss_pct", "trail_gap_pct"]) {
+    if (params[key] != null && $(key)) $(key).value = params[key];
+  }
+}
+
+function showStrategy(key, refillFlags) {
+  if (prevKey) flagEdits[prevKey] = readFlags();
+  prevKey = key;
+  const preset = presetByKey(key);
+  const saved = result && result.strategies ? result.strategies[key] : null;
+  const params = (refillFlags && flagEdits[key]) || (saved && saved.params) || (preset && preset.params) || {};
+  $("desc").textContent = (saved && saved.desc) || (preset && preset.desc) || "";
+  if (refillFlags) fillFlags(params);
+  renderRows();
+}
+
+function renderRows() {
+  const key = $("strategy").value;
+  const pack = result && result.strategies ? result.strategies[key] : null;
+  let rows = pack && Array.isArray(pack.rows) ? pack.rows.slice() : [];
+  const q = $("q").value.trim().toLowerCase();
+  if (q) rows = rows.filter((row) => row && (`${row.symbol} ${row.name || ""}`).toLowerCase().includes(q));
+  rows.sort((a, b) => {
+    const va = a && a[sortKey] != null ? a[sortKey] : "";
+    const vb = b && b[sortKey] != null ? b[sortKey] : "";
+    if (va < vb) return sortAsc ? -1 : 1;
+    if (va > vb) return sortAsc ? 1 : -1;
+    return 0;
+  });
+  const holds = rows.filter((row) => row && row.is_holding_now).length;
+  const avgRet = rows.length ? rows.reduce((sum, row) => sum + Number(row.total_return_pct || 0), 0) / rows.length : null;
+  const avgWin = rows.length ? rows.reduce((sum, row) => sum + Number(row.win_rate || 0), 0) / rows.length : null;
+  $("stCount").textContent = rows.length;
+  $("stHold").textContent = holds;
+  $("stRet").textContent = avgRet == null ? "—" : `${avgRet >= 0 ? "+" : ""}${avgRet.toFixed(2)}%`;
+  $("stRet").className = avgRet != null && avgRet < 0 ? "down" : "up";
+  $("stWin").textContent = avgWin == null ? "—" : `${avgWin.toFixed(1)}%`;
+  const body = $("rows");
+  body.innerHTML = "";
+  $("empty").style.display = rows.length ? "none" : "block";
+  for (const row of rows) {
+    if (!row) continue;
+    const ret = Number(row.total_return_pct || 0);
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td class="code">${row.symbol || ""}</td><td>${row.name || "—"}</td><td>${Number(row.latest_close || 0).toFixed(2)}</td><td>${row.latest_signal_date || "—"}</td><td>${row.total_trades || 0}</td><td>${row.win_rate || 0}%</td><td class="${ret >= 0 ? "up" : "down"}">${ret >= 0 ? "+" : ""}${ret.toFixed(2)}%</td><td>${Number(row.max_drawdown_pct || 0).toFixed(1)}%</td><td>${row.profit_loss_ratio || 0}</td><td>${row.is_holding_now ? `<span class="hold">持仓 ${Number(row.current_unrealized_pnl || 0).toFixed(1)}%</span>` : "已平"}</td>`;
+    body.appendChild(tr);
+  }
+}
+
+async function loadConfig() {
+  const res = await fetch(API + "/api/ma/config");
+  if (!res.ok) throw new Error("配置接口不可用，请重启 python scripts/web_ui.py");
+  const cfg = await res.json();
+  presets = Array.isArray(cfg.presets) ? cfg.presets : [];
+  $("years").value = cfg.years || 2;
+  const sel = $("strategy");
+  sel.innerHTML = "";
+  for (const item of presets) {
+    if (!item || !item.key) continue;
+    const opt = document.createElement("option");
+    opt.value = item.key;
+    opt.textContent = SHORT[item.key] || item.name || item.key;
+    sel.appendChild(opt);
+  }
+  const first = presets[0];
+  if (first && first.params) fillNumbers(first.params);
+  $("meta").textContent = (cfg.db_exists ? "数据库：" : "数据库不存在：") + (cfg.db_path || "");
+  try {
+    const got = await fetch(API + "/api/ma/result");
+    if (got.ok) result = await got.json();
+  } catch (e) { result = null; }
+  if (result && result.scan_date) $("meta").textContent += ` ｜ 上次扫描 ${result.scan_date}`;
+  showStrategy(sel.value, true);
+}
+
+function collectParams() {
+  const params = {};
+  for (const key of ["ma_fast", "ma_slow", "ma_trend", "macd_fast", "macd_slow", "macd_signal", "stop_loss_pct", "trail_gap_pct"]) {
+    const value = Number($(key).value);
+    if (!Number.isFinite(value) || value < 0) throw new Error(`${key} 不是有效数字`);
+    params[key] = value;
+  }
+  const years = Number($("years").value);
+  if (!Number.isFinite(years) || years <= 0) throw new Error("回测年数必须大于 0");
+  const limitText = $("limit").value.trim();
+  const limit = limitText === "" ? null : Number(limitText);
+  if (limit != null && (!Number.isInteger(limit) || limit < 1)) throw new Error("股票数量留空表示全部，或填正整数");
+  flagEdits[$("strategy").value] = readFlags();
+  return { years, limit, strategy: $("strategy").value, params, flag_overrides: flagEdits };
+}
+
+$("strategy").onchange = () => showStrategy($("strategy").value, true);
+$("q").oninput = renderRows;
+document.querySelectorAll("th[data-k]").forEach((th) => {
+  th.onclick = () => {
+    const key = th.dataset.k;
+    sortAsc = sortKey === key ? !sortAsc : false;
+    sortKey = key;
+    renderRows();
+  };
+});
+
+$("btnScan").onclick = async () => {
+  let body;
+  try { body = collectParams(); }
+  catch (e) { alert(e.message); return; }
+  $("btnScan").disabled = true;
+  $("log").textContent = "";
+  try {
+    const res = await fetch(API + "/api/ma/scan", {
+      method: "POST", headers: { "Content-Type": "text/plain" }, body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || res.statusText);
+    }
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder("utf-8");
+    let buf = "";
+    let exitCode = null;
+    for (;;) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      buf += decoder.decode(chunk.value, { stream: true });
+      const parts = buf.split(/\r?\n/);
+      buf = parts.pop() || "";
+      for (const line of parts) {
+        if (line.startsWith("__EXIT__")) exitCode = Number(line.slice(8));
+        else $("log").textContent += line + "\n";
+      }
+      $("log").scrollTop = $("log").scrollHeight;
+    }
+    if (exitCode !== 0) throw new Error("扫描未完成，退出码 " + exitCode);
+    const got = await fetch(API + "/api/ma/result");
+    result = got.ok ? await got.json() : null;
+    renderRows();
+  } catch (e) {
+    $("log").textContent += "\n" + e.message;
+  } finally {
+    $("btnScan").disabled = false;
+  }
+};
+
+loadConfig().catch((e) => { $("log").textContent = e.message; });
+</script>
+</body>
+</html>

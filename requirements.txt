@@ -1,0 +1,5 @@
+akquant>=0.3.65
+akshare>=1.19
+numpy
+pandas
+pyyaml

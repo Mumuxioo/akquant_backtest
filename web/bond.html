@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>五线粘合突破 · 本地回测</title>
+<style>
+  :root {
+    --bg: #0b1020; --panel: #121a2e; --panel2: #18223a; --line: #24304d;
+    --text: #e6ebf5; --muted: #8b97b3; --accent: #6c8cff; --accent2: #9b6cff;
+    --up: #ff5d6c; --down: #22c58b; --warn: #ffb547; --err: #ff6b6b;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: radial-gradient(1200px 600px at 10% -10%, #1b2550 0%, transparent 60%),
+                radial-gradient(900px 500px at 110% 0%, #2a1b50 0%, transparent 55%), var(--bg);
+    color: var(--text); font: 14px/1.5 -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+    display: flex; flex-direction: column;
+  }
+  button { font: inherit; cursor: pointer; border: 0; border-radius: 10px; padding: 8px 14px; color: var(--text); background: var(--panel2); transition: .15s; }
+  button:hover:not(:disabled) { filter: brightness(1.2); }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  .primary { background: linear-gradient(135deg, var(--accent), var(--accent2)); font-weight: 600; box-shadow: 0 6px 20px -8px var(--accent); }
+  .danger { background: #3a1d28; color: #ff9aa5; }
+  .ghost { background: transparent; border: 1px solid var(--line); }
+  input, select { font: inherit; color: var(--text); background: #0d1428; border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; width: 100%; outline: none; transition: .15s; }
+  input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px #6c8cff33; }
+
+  header { display: flex; align-items: center; gap: 14px; padding: 14px 22px; border-bottom: 1px solid var(--line); background: #0b1020cc; backdrop-filter: blur(8px); }
+  .logo { width: 34px; height: 34px; border-radius: 10px; background: linear-gradient(135deg, var(--accent), var(--accent2)); display: grid; place-items: center; font-weight: 800; }
+  header h1 { font-size: 17px; margin: 0; }
+  header small { color: var(--muted); }
+  .spacer { flex: 1; }
+  .pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: var(--panel2); color: var(--muted); font-size: 12px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  .pill.ok .dot { background: var(--down); box-shadow: 0 0 8px var(--down); }
+  .pill.run .dot { background: var(--warn); animation: pulse 1s infinite; }
+  .pill.bad .dot { background: var(--err); }
+  a.nav { color: var(--muted); text-decoration: none; font-size: 13px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); }
+  a.nav:hover { color: var(--text); border-color: var(--accent); }
+  @keyframes pulse { 50% { opacity: .3; } }
+
+  .banner { display: none; margin: 12px 22px 0; padding: 10px 14px; border-radius: 10px; background: #3a1d28; color: #ffc2c8; }
+  .banner code { background: #0006; padding: 1px 6px; border-radius: 4px; }
+
+  main { flex: 1; min-height: 0; display: grid; grid-template-columns: 380px 1fr; gap: 16px; padding: 16px 22px 22px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; }
+  aside { display: flex; flex-direction: column; min-height: 0; }
+  .run-box { padding: 16px; display: grid; gap: 10px; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  label.f { display: grid; gap: 4px; font-size: 12px; color: var(--muted); }
+  .symbol input { font-size: 20px; font-family: var(--mono); letter-spacing: 2px; text-align: center; }
+  .params { flex: 1; overflow: auto; padding: 4px 16px 16px; border-top: 1px solid var(--line); }
+  .params-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 0 4px; position: sticky; top: 0; background: var(--panel); z-index: 1; }
+  .params-head b { font-size: 13px; }
+  details { border-bottom: 1px dashed var(--line); padding: 8px 0; }
+  summary { cursor: pointer; color: var(--accent); font-weight: 600; font-size: 13px; list-style: none; }
+  summary::before { content: "▸ "; } details[open] summary::before { content: "▾ "; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 8px; }
+  .p { display: grid; gap: 3px; font-size: 12px; color: var(--muted); position: relative; }
+  .p .hint { font-size: 11px; color: #6b7794; min-height: 15px; }
+  .p .desc { font-size: 10px; line-height: 1.35; color: #77839f; }
+  .p.changed input { border-color: var(--warn); }
+  .p.changed select { border-color: var(--warn); }
+  .p.changed::after { content: "已改"; position: absolute; right: 0; top: 0; font-size: 10px; color: var(--warn); }
+  .rule-list { margin: 8px 0 0; padding-left: 18px; color: var(--muted); font-size: 11px; }
+  .rule-list li { margin: 5px 0; }
+  .rule-list code { color: #c7b6ff; }
+
+  section.console { display: flex; flex-direction: column; min-height: 0; }
+  .toolbar { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  .toolbar .title { font-weight: 600; }
+  .toolbar input[type=search] { width: 200px; }
+  .chk { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; cursor: pointer; user-select: none; }
+  .chk input { width: auto; }
+  .stats { display: flex; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  .stat { background: var(--panel2); border-radius: 10px; padding: 6px 12px; min-width: 96px; }
+  .stat span { display: block; font-size: 11px; color: var(--muted); }
+  .stat b { font-family: var(--mono); font-size: 16px; }
+  .stat.buy b { color: var(--up); } .stat.sell b { color: var(--down); }
+  #log { flex: 1; overflow: auto; padding: 10px 0; font: 12.5px/1.65 var(--mono); background: #0a0f1e; }
+  .ln { padding: 0 16px 0 12px; border-left: 3px solid transparent; white-space: pre-wrap; word-break: break-all; }
+  .ln:hover { background: #ffffff08; }
+  .ln .d { color: var(--accent); margin-right: 6px; }
+  .ln.sub { color: var(--muted); padding-left: 28px; }
+  .ln.head { color: #c7b6ff; font-weight: 700; margin-top: 8px; }
+  .ln.buy { border-left-color: var(--up); background: #ff5d6c12; }
+  .ln.buy::before { content: "买"; background: var(--up); }
+  .ln.sell { border-left-color: var(--down); background: #22c58b12; }
+  .ln.sell::before { content: "卖"; background: var(--down); }
+  .ln.buy::before, .ln.sell::before { color: #fff; font-size: 11px; padding: 0 5px; border-radius: 4px; margin-right: 8px; }
+  .ln.order { color: var(--warn); }
+  .ln.alert { color: #ffcf8a; }
+  .ln.skip { color: #6b7794; }
+  .ln.err { color: var(--err); }
+  .ln.sys { color: var(--accent); font-style: italic; }
+  .ln.hide { display: none; }
+  .only-trades .ln:not(.buy):not(.sell):not(.order):not(.alert):not(.head):not(.err) { display: none; }
+  .empty { color: var(--muted); text-align: center; padding: 60px 20px; font-family: inherit; }
+  .reports { display: flex; gap: 10px; padding: 12px 14px; border-top: 1px solid var(--line); align-items: center; flex-wrap: wrap; }
+  .reports .muted { color: var(--muted); font-size: 12px; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } aside { max-height: none; } section.console { min-height: 70vh; } }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">粘</div>
+  <div>
+    <h1>五线粘合突破 · 本地回测</h1>
+    <small id="dbInfo">正在连接本地服务…</small>
+  </div>
+  <div class="spacer"></div>
+  <a class="nav" href="/">五线探戈</a>
+  <a class="nav" href="/scan.html">20/55选股</a>
+  <span class="pill" id="status"><span class="dot"></span><span id="statusText">未连接</span></span>
+  <span class="pill" id="timer" style="display:none">⏱ <span id="timerText">0s</span></span>
+  <button id="btnSync" class="primary" disabled>⟳ 同步 A 股日线</button>
+  <button id="btnStop" class="danger" disabled>■ 停止</button>
+</header>
+
+<div class="banner" id="banner">
+  未连接到本地服务。请在项目根目录运行 <code>python scripts/web_ui.py</code>，然后刷新本页。
+</div>
+
+<main>
+  <aside class="card">
+    <div class="run-box">
+      <label class="f symbol">股票代码
+        <input id="symbol" maxlength="6" placeholder="002432" autocomplete="off">
+      </label>
+      <div class="row">
+        <label class="f">开始日期（留空=全部）<input id="startDate" type="date"></label>
+        <label class="f">结束日期（留空=最新）<input id="endDate" type="date"></label>
+      </div>
+      <div class="row">
+        <label class="f">止盈方案
+          <select id="exitMode">
+            <option value="rr">方案1 固定盈亏比</option>
+            <option value="macd">方案2 MACD 死叉</option>
+          </select>
+        </label>
+        <label class="f">120 日高点
+          <select id="highField">
+            <option value="close">最高收盘</option>
+            <option value="high">最高价</option>
+          </select>
+        </label>
+      </div>
+      <button id="btnRun" class="primary" disabled>▶ 开始回测</button>
+      <details>
+        <summary>入场 / 出场规则</summary>
+        <p style="margin:8px 0 0;color:var(--muted);font-size:12px">日线收盘确认，下一交易日开盘成交。核心条件是阶段、近期粘合、站上均线簇、足够历史和可交易；其余过滤可单独开关。硬止损是连续两根收盘低于当天 E55，固定盈亏比按实际成交价计算。</p>
+      </details>
+      <details>
+        <summary>指标公式与调参方向</summary>
+        <ul class="rule-list">
+          <li><code>粘合宽度=(簇高-簇低)/簇低</code>，簇为 5/10/20/30 EMA；阈值越大、有效根数越多，信号越多。</li>
+          <li><code>突破=收盘&gt;簇高×(1+缓冲)</code>；缓冲越大，突破确认越严格。</li>
+          <li><code>放量=成交量&gt;含当天均量×倍数</code>；倍数越低越容易通过。</li>
+          <li><code>阳线=收盘&gt;开盘 且 收盘/前收≥阳线倍数</code>；1.03 表示至少涨 3%。</li>
+          <li><code>MACD</code>：DIF&gt;DEA 且柱不缩短，或连续两根红柱；可关闭以检查它是否漏掉启动点。</li>
+          <li><code>高位过滤=收盘&lt;区间最高价×上限</code>；0.85 会排除接近高点的突破，若关键买点常在前高附近可关闭。</li>
+          <li>所有启用项为 AND 关系。建议一次只改一个参数，便于确认是哪项造成差异。</li>
+        </ul>
+      </details>
+    </div>
+    <div class="params">
+      <div class="params-head">
+        <b>策略参数 <small style="color:var(--muted);font-weight:400">默认值来自 config.yaml</small></b>
+        <button id="btnReset" class="ghost" style="padding:4px 10px;font-size:12px">恢复默认</button>
+      </div>
+      <div id="paramGroups"></div>
+    </div>
+  </aside>
+
+  <section class="card console">
+    <div class="toolbar">
+      <span class="title" id="logTitle">运行日志</span>
+      <div class="spacer"></div>
+      <input type="search" id="filter" placeholder="筛选日志，如 2024-03 / 止损">
+      <label class="chk"><input type="checkbox" id="onlyTrades">只看交易</label>
+      <label class="chk"><input type="checkbox" id="autoScroll" checked>自动滚动</label>
+      <button class="ghost" id="btnClear" style="padding:4px 10px;font-size:12px">清空</button>
+    </div>
+    <div class="stats">
+      <div class="stat"><span>日志行数</span><b id="stLines">0</b></div>
+      <div class="stat buy"><span>买入成交</span><b id="stBuy">0</b></div>
+      <div class="stat sell"><span>卖出成交</span><b id="stSell">0</b></div>
+      <div class="stat"><span>期末权益</span><b id="stEquity">—</b></div>
+    </div>
+    <div id="log"><div class="empty">输入股票代码，调整参数后点「开始回测」，每天的操作日志会在这里逐行出现。</div></div>
+    <div class="reports">
+      <button id="btnReport" class="primary" disabled>📊 打开回测报告</button>
+      <button id="btnReview" class="primary" disabled>🔍 打开交易复盘</button>
+      <button id="btnTxt" class="ghost" disabled>日志 txt</button>
+      <span class="muted" id="reportHint">结果保存在 output/&lt;代码&gt;/</span>
+    </div>
+  </section>
+</main>
+
+<script>
+// 页面由 web_ui.py 提供时走同源；双击 file:// 打开时连本机默认端口，可用 ?api=http://127.0.0.1:端口 覆盖
+const API = new URLSearchParams(location.search).get("api")
+  || (location.protocol === "file:" ? "http://127.0.0.1:8765" : "");
+const EXIT_MARK = "__EXIT__";
+
+// 键名与 config.yaml bond_break 段一致。pct=true 时在输入框下把小数显示成百分比
+const GROUPS = [
+  { title: "粘合与启动", open: true, items: [
+    ["tol", "五线容差", 0.001, true],
+    ["bond_thresh", "粘合阈值", 0.01, true],
+    ["bond_lookback", "粘合有效根数", 1],
+    ["breakout_buffer", "突破簇高缓冲", 0.001, true],
+    ["min_phase", "最低阶段（2/3/4）", 1],
+    ["vol_multiple", "放量倍数", 0.1],
+    ["vol_ma", "均量周期（含当天）", 1],
+    ["rise_min", "阳线倍数（1.03=涨 3%）", 0.01],
+    ["min_bar_count", "最少 K 线", 10],
+    ["high_lookback", "高位回看根数", 1],
+    ["high_pos_cap", "高位上限", 0.01, true],
+    ["year_floor", "年线地板", 0.01, true],
+    ["slope_lag", "长线斜率间隔", 1],
+  ]},
+  { title: "五线周期", open: false, items: [
+    ["ema_fast", "E 快", 1], ["ema_mid", "E 中", 1], ["ema_trend", "E55", 1],
+    ["ema_s3", "E125", 1], ["ema_long", "E250", 1],
+  ]},
+  { title: "粘合与趋势均线", open: false, items: [
+    ["ma_fast", "MA5", 1], ["ma_10", "MA10", 1], ["ma_20", "MA20", 1], ["ma_30", "MA30", 1],
+    ["ma_60", "MA60", 1], ["ma_120", "MA120", 1], ["ma_250", "MA250", 1],
+  ]},
+  { title: "MACD", open: false, items: [
+    ["macd_fast", "DIF 快线", 1], ["macd_slow", "DIF 慢线", 1], ["macd_signal", "DEA", 1],
+  ]},
+  { title: "入场过滤开关", open: true, items: [
+    ["use_half_year", "站上 MA120", 1, false, "toggle"],
+    ["use_year_floor", "年线地板", 1, false, "toggle"],
+    ["use_trend", "MA60 趋势", 1, false, "toggle"],
+    ["use_high_filter", "区间高位过滤", 1, false, "toggle"],
+    ["use_volume", "放量过滤", 1, false, "toggle"],
+    ["use_bull", "阳线涨幅过滤", 1, false, "toggle"],
+    ["use_macd", "MACD 动能过滤", 1, false, "toggle"],
+  ]},
+  { title: "仓位、止盈止损与成本", open: true, items: [
+    ["single_cap", "单票仓位上限", 0.01, true],
+    ["stop_pct", "固定止损（方案1）", 0.01, true],
+    ["target_pct", "固定止盈（方案1）", 0.01, true],
+    ["initial_cash", "初始资金（元）", 10000],
+    ["lot", "每手股数", 100],
+    ["slippage", "滑点", 0.0005, true],
+  ]},
+];
+
+const PARAM_INFO = {
+  tol: "阶段站上与 E55 硬止损的容差。",
+  bond_thresh: "当前或近期 EMA 簇宽度须小于此值。",
+  bond_lookback: "最近 N 根有过粘合即可；1 表示只认当天粘合。",
+  breakout_buffer: "收盘超过簇高的额外比例；0 表示只需站上。",
+  min_phase: "2=S2/S3/S4，3=S3/S4，4=仅 S4。",
+  vol_multiple: "成交量需大于含当天均量乘以此倍数。",
+  vol_ma: "成交量均线周期，计算包含信号当天。",
+  rise_min: "收盘/前收的最低倍数，同时必须是阳线。",
+  min_bar_count: "上市历史少于该根数时不允许开仓。",
+  high_lookback: "区间高点回看的交易日数量。",
+  high_pos_cap: "收盘须低于区间高点×此值；越大越宽松。",
+  year_floor: "收盘须高于 MA250×此值。",
+  slope_lag: "S4 的 E55/E125/E250 与多少根前比较上行。",
+  use_half_year: "关闭后不再要求收盘高于 MA120。",
+  use_year_floor: "关闭后不再检查 MA250 年线地板。",
+  use_trend: "关闭后不再要求收盘高于 MA60 且 MA60 不下降。",
+  use_high_filter: "关闭后允许在区间高点附近突破。",
+  use_volume: "关闭后不再要求放量。",
+  use_bull: "关闭后不再要求阳线和最小涨幅。",
+  use_macd: "关闭后不再要求 MACD 动能。",
+  stop_pct: "仅固定盈亏比：收盘相对实际买入成交价的止损比例。",
+  target_pct: "仅固定盈亏比：收盘相对实际买入成交价的止盈比例。",
+};
+
+const $ = (id) => document.getElementById(id);
+let defaults = {};        // 来自 config.yaml 的参数默认值
+let choiceDefaults = { exit_mode: "macd", high_field: "close" };
+let running = false;
+let timerId = null;
+let reportLinks = {};
+
+// ---------- 参数面板 ----------
+function buildParams() {
+  const box = $("paramGroups");
+  box.innerHTML = "";
+  for (const g of GROUPS) {
+    const d = document.createElement("details");
+    d.open = g.open;
+    d.innerHTML = `<summary>${g.title}</summary><div class="grid"></div>`;
+    const grid = d.querySelector(".grid");
+    for (const [key, label, step, pct, type] of g.items) {
+      const wrap = document.createElement("label");
+      wrap.className = "p";
+      const control = type === "toggle"
+        ? `<select data-key="${key}"><option value="1">启用</option><option value="0">关闭</option></select>`
+        : `<input type="number" step="${step}" min="0" data-key="${key}" data-pct="${pct ? 1 : 0}">`;
+      wrap.innerHTML = `${label}${control}<span class="hint"></span><span class="desc">${PARAM_INFO[key] || ""}</span>`;
+      grid.appendChild(wrap);
+    }
+    box.appendChild(d);
+  }
+  box.addEventListener("input", (e) => { if (e.target.dataset.key) refreshParam(e.target); });
+}
+
+function refreshParam(input) {
+  const key = input.dataset.key;
+  const v = input.value === "" ? NaN : Number(input.value);
+  const hint = input.parentElement.querySelector(".hint");
+  // 百分比提示 + 与默认值对比，改过的参数高亮
+  if (input.dataset.key === "rise_min" && Number.isFinite(v)) hint.textContent = `涨幅 ≥ ${((v - 1) * 100).toFixed(2)}%`;
+  else hint.textContent = input.dataset.pct === "1" && Number.isFinite(v) ? `= ${(v * 100).toFixed(2)}%` : "";
+  const def = defaults[key];
+  input.parentElement.classList.toggle("changed", def !== undefined && Number.isFinite(v) && v !== Number(def));
+}
+
+function fillParams() {
+  document.querySelectorAll("#paramGroups [data-key]").forEach((input) => {
+    const def = defaults[input.dataset.key];
+    input.value = def === undefined || def === null ? "" : def;
+    refreshParam(input);
+  });
+  if ($("exitMode")) $("exitMode").value = choiceDefaults.exit_mode;
+  if ($("highField")) $("highField").value = choiceDefaults.high_field;
+}
+
+function collectParams() {
+  const out = {};
+  const errors = [];
+  document.querySelectorAll("#paramGroups [data-key]").forEach((input) => {
+    if (input.value === "") return;               // 留空 = 用 config.yaml 默认
+    const v = Number(input.value);
+    if (!Number.isFinite(v) || v < 0) errors.push(input.dataset.key);
+    else out[input.dataset.key] = v;
+  });
+  if (errors.length) throw new Error("参数无效：" + errors.join(", "));
+  return out;
+}
+
+// ---------- 日志渲染 ----------
+const stats = { lines: 0, buy: 0, sell: 0 };
+
+function classify(text) {
+  if (/成交买入/.test(text)) return "buy";
+  if (/成交卖出/.test(text)) return "sell";
+  if (/^=+.*=+$/.test(text.trim())) return "head";
+  if (/Traceback|Error|错误|异常|拒单/.test(text)) return "err";
+  if (/已提交买单|量化买点/.test(text)) return "order";
+  if (/下一根开盘清仓|硬止损|固定止损|固定止盈|MACD 离场/.test(text)) return "alert";
+  if (/不加仓|今天不报单|还不能卖/.test(text)) return "skip";
+  if (/^\s{2,}/.test(text)) return "sub";
+  return "";
+}
+
+function escapeHtml(s) {
+  return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+}
+
+function makeLine(text, kind) {
+  const div = document.createElement("div");
+  div.className = "ln " + (kind ?? classify(text));
+  // 行首日期单独着色，方便扫读
+  const m = text.match(/^(\d{4}-\d{2}-\d{2})(.*)$/s);
+  div.innerHTML = m ? `<span class="d">${m[1]}</span>${escapeHtml(m[2])}` : escapeHtml(text);
+  if (kind === undefined) {
+    if (div.classList.contains("buy")) stats.buy++;
+    if (div.classList.contains("sell")) stats.sell++;
+    const eq = text.match(/期末权益\s*([\d.]+)/);
+    if (eq) $("stEquity").textContent = Number(eq[1]).toLocaleString();
+  }
+  applyFilter(div);
+  return div;
+}
+
+function appendLines(lines, kind) {
+  const log = $("log");
+  const empty = log.querySelector(".empty");
+  if (empty) empty.remove();
+  const frag = document.createDocumentFragment();
+  for (const t of lines) { frag.appendChild(makeLine(t, kind)); stats.lines++; }
+  log.appendChild(frag);
+  $("stLines").textContent = stats.lines;
+  $("stBuy").textContent = stats.buy;
+  $("stSell").textContent = stats.sell;
+  if ($("autoScroll").checked) log.scrollTop = log.scrollHeight;
+}
+
+const sys = (t) => appendLines([t], "sys");
+const err = (t) => appendLines([t], "err");
+
+function clearLog() {
+  $("log").innerHTML = "";
+  Object.assign(stats, { lines: 0, buy: 0, sell: 0 });
+  ["stLines", "stBuy", "stSell"].forEach((id) => ($(id).textContent = "0"));
+  $("stEquity").textContent = "—";
+}
+
+function applyFilter(div) {
+  const q = $("filter").value.trim();
+  div.classList.toggle("hide", !!q && !div.textContent.includes(q));
+}
+
+// ---------- 与本地服务通信 ----------
+function setStatus(kind, text) {
+  $("status").className = "pill " + kind;
+  $("statusText").textContent = text;
+}
+
+function setRunning(on, label) {
+  running = on;
+  $("btnRun").disabled = on;
+  $("btnSync").disabled = on;
+  $("btnStop").disabled = !on;
+  $("timer").style.display = on ? "" : "none";
+  clearInterval(timerId);
+  if (on) {
+    const t0 = Date.now();
+    $("timerText").textContent = "0s";
+    timerId = setInterval(() => ($("timerText").textContent = Math.round((Date.now() - t0) / 1000) + "s"), 1000);
+    setStatus("run", label + "中…");
+  } else {
+    setStatus("ok", "就绪");
+  }
+}
+
+// 以纯文本 POST，避免 file:// 页面触发 CORS 预检；响应体逐块读取、按行渲染
+async function runStream(path, body, label) {
+  setRunning(true, label);
+  let exitCode = null;
+  try {
+    const res = await fetch(API + path, { method: "POST", headers: { "Content-Type": "text/plain" }, body: JSON.stringify(body || {}) });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      err(`请求失败（${res.status}）：${data.error || res.statusText}`);
+      return null;
+    }
+    if (!res.body) { err("浏览器不支持流式读取"); return null; }
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder("utf-8");
+    let buf = "";
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const parts = buf.split(/\r\n|\n|\r/);
+      buf = parts.pop() ?? "";
+      const shown = [];
+      for (const p of parts) {
+        if (p.startsWith(EXIT_MARK)) exitCode = Number(p.slice(EXIT_MARK.length).trim());
+        else shown.push(p);
+      }
+      if (shown.length) appendLines(shown);
+    }
+    if (buf) appendLines([buf]);
+    if (exitCode === null) err("连接中断，未收到结束标记");
+    else if (exitCode === 0) sys(`✔ ${label}完成`);
+    else err(`✘ ${label}结束，退出码 ${exitCode}`);
+  } catch (e) {
+    err(`${label}出错：${e.message}`);
+    setStatus("bad", "连接失败");
+  } finally {
+    setRunning(false);
+  }
+  return exitCode;
+}
+
+async function loadConfig() {
+  try {
+    const res = await fetch(API + "/api/bond/config");
+    if (!res.ok) throw new Error(res.status);
+    const cfg = await res.json();
+    defaults = cfg.params || {};
+    choiceDefaults = {
+      exit_mode: cfg.exit_mode || "macd",
+      high_field: cfg.high_field || "close",
+    };
+    $("symbol").value = cfg.symbol || "";
+    $("startDate").value = cfg.start_date || "";
+    $("endDate").value = cfg.end_date || "";
+    $("dbInfo").textContent = (cfg.db_exists ? "数据库：" : "⚠ 数据库不存在，请先同步：") + (cfg.db_path || "");
+    $("banner").style.display = "none";
+    fillParams();
+    setRunning(false);
+    if (cfg.busy) { setStatus("run", `后台有任务在运行：${cfg.busy}`); $("btnStop").disabled = false; }
+    checkReports();
+  } catch (e) {
+    $("banner").style.display = "block";
+    setStatus("bad", "未连接");
+    $("dbInfo").textContent = "本地服务未启动";
+  }
+}
+
+// 查询该代码已有的报告，点亮按钮
+async function checkReports() {
+  const symbol = $("symbol").value.trim();
+  reportLinks = {};
+  if (/^\d{6}$/.test(symbol)) {
+    try {
+      const res = await fetch(API + "/api/bond/reports?symbol=" + symbol);
+      if (res.ok) reportLinks = (await res.json()) || {};
+    } catch (e) { /* 服务不可用时按钮保持禁用 */ }
+  }
+  $("btnReport").disabled = !reportLinks["bond_report.html"];
+  $("btnReview").disabled = !reportLinks["bond_review.html"];
+  $("btnTxt").disabled = !reportLinks["bond_break_log.txt"];
+  $("reportHint").textContent = Object.keys(reportLinks).length
+    ? `已找到 output/${symbol}/ 下的结果` : "结果保存在 output/<代码>/";
+}
+
+const openLink = (name) => { if (reportLinks[name]) window.open(API + reportLinks[name], "_blank"); };
+
+// ---------- 事件绑定 ----------
+$("btnRun").onclick = async () => {
+  const symbol = $("symbol").value.trim();
+  if (!/^\d{6}$/.test(symbol)) { alert("请输入 6 位股票代码"); $("symbol").focus(); return; }
+  let params;
+  try { params = collectParams(); } catch (e) { alert(e.message); return; }
+  clearLog();
+  $("logTitle").textContent = `回测日志 · ${symbol}`;
+  const exitMode = $("exitMode").value;
+  const highField = $("highField").value;
+  sys(`开始回测 ${symbol}，止盈 ${exitMode}，高位 ${highField}，参数：${JSON.stringify(params)}`);
+  await runStream("/api/bond/backtest", {
+    symbol, params, exit_mode: exitMode, high_field: highField,
+    start_date: $("startDate").value, end_date: $("endDate").value,
+  }, "回测");
+  checkReports();
+};
+
+$("btnSync").onclick = async () => {
+  if (!confirm("将增量同步全 A 股前复权日线，需要联网，耗时可能较长。确定开始？")) return;
+  clearLog();
+  $("logTitle").textContent = "数据同步日志";
+  sys("开始增量同步 A 股日线（python scripts/sync_a_share_daily.py）");
+  await runStream("/api/sync", {}, "数据同步");
+  loadConfig();
+};
+
+$("btnStop").onclick = async () => {
+  try {
+    const res = await fetch(API + "/api/stop", { method: "POST", headers: { "Content-Type": "text/plain" }, body: "{}" });
+    const data = await res.json().catch(() => ({}));
+    sys(data.stopped ? "已发送停止信号，等待任务安全退出…" : "当前没有运行中的任务");
+  } catch (e) { err("停止失败：" + e.message); }
+};
+
+$("btnReset").onclick = fillParams;
+$("btnClear").onclick = clearLog;
+$("btnReport").onclick = () => openLink("bond_report.html");
+$("btnReview").onclick = () => openLink("bond_review.html");
+$("btnTxt").onclick = () => openLink("bond_break_log.txt");
+$("onlyTrades").onchange = (e) => $("log").classList.toggle("only-trades", e.target.checked);
+$("filter").oninput = () => document.querySelectorAll("#log .ln").forEach(applyFilter);
+let symTimer = null;
+$("symbol").oninput = (e) => {
+  e.target.value = e.target.value.replace(/\D/g, "");
+  clearTimeout(symTimer);
+  symTimer = setTimeout(checkReports, 300);
+};
+$("symbol").onkeydown = (e) => { if (e.key === "Enter" && !running) $("btnRun").click(); };
+
+buildParams();
+loadConfig();
+</script>
+</body>
+</html>

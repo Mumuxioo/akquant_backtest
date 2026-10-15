@@ -1,0 +1,113 @@
+# ================================================
+# quant-demo 配置文件
+# 网页控制台和命令行都从这里取默认值；网页上改的参数只对那一次回测生效
+# 路径都相对项目根目录
+# ================================================
+
+data:
+  db_path: "data/a_share.db"    # 本地前复权日线库（SQLite）
+
+sync:                           # scripts/sync_a_share_daily.py 的参数
+  start_date: "19900101"        # 新股补全历史的起点 YYYYMMDD
+  overlap_days: 30              # 已有股票回补的自然日数
+  workers: 16                   # 并发请求数。腾讯日线 16 稳定；东财超过 4 会断连
+  delay: 0.1                    # 仅 workers=1 时，每只股票请求后的间隔（秒）
+
+backtest:
+  default_symbol: "002432"      # 网页默认股票代码
+  start_date: ""                # 回测起始 YYYY-MM-DD，留空 = 全部历史（指标仍用全部历史预热）
+  end_date: ""                  # 回测结束 YYYY-MM-DD，留空 = 最新
+
+output:
+  dir: "output"                 # 回测结果写到 output/<代码>/，选股写到 output/market/
+
+web:
+  host: "127.0.0.1"             # 只监听本机，不要改成 0.0.0.0
+  port: 8765
+
+# 五线探戈策略参数（scripts/five_line.py），键名对应脚本里的大写常量
+five_line:
+  ema_fast: 5                   # 日线快线
+  ema_mid: 13                   # 日线中线（追高、跌破减战术仓）
+  ema_trend: 55                 # 日线趋势线，周线过滤也用这个周期
+  ema_s3: 125                   # 四线阶段要站上的均线
+  ema_long: 250                 # 五线阶段里最长的那条
+  tolerance: 0.002              # 站上/跌破均线至少离开 0.2%
+  rvol_high: 1.30               # 放量阈值（20 日量比）
+  rvol_low: 0.80                # 缩量阈值
+  pullback_min: 0.03            # 最小回撤幅度
+  pullback_hard_cap: 0.12       # 回撤上限（与 2×ATR/峰值 取较大）
+  window_min: 3                 # 回撤窗口最少根数
+  window_max: 15                # 回撤窗口最多根数
+  breakout_lookback: 10         # 突破参照前 N 根最高收盘
+  chase_max: 2.0                # (收盘-EMA13)/ATR 超过即视为追高
+  ema_exit_gap: 0.005           # 收盘低于趋势均线至少 0.5% 才算有效跌破
+  daily_warmup: 250             # 日线预热根数
+  weekly_warmup: 55             # 周线预热根数
+  single_cap: 0.15              # 单票计划仓位上限（占权益）
+  base_weight: 0.50             # 计划仓位内基础仓占比
+  add_weight: 0.30              # 计划仓位内趋势加仓占比
+  portfolio_cap: 0.70           # 组合总仓位上限
+  risk_fraction: 0.008          # 单笔止损亏损不超过权益比例
+  slippage: 0.001               # 滑点
+  initial_cash: 1000000         # 初始资金
+  lot: 100                      # 每手股数
+
+# 五线粘合中继突破（scripts/bond_break.py）。网页改的参数只对那一次回测生效
+bond_break:
+  tol: 0.002                    # 站上 / 跌破均线至少离开 0.2%
+  bond_thresh: 0.05             # 5/10/20/30 EMA 相对振幅上限，0.04 更严，0.08 更松
+  vol_multiple: 1.5             # 成交量 > 含当天的 5 日均量 × 倍数
+  vol_ma: 5
+  rise_min: 1.03                # 阳线，且收盘/前收至少这个倍数
+  min_bar_count: 260            # 少于这些 K 线不买，用来挡新股
+  min_phase: 2                  # 最低允许阶段：2=S2/S3/S4，3=S3/S4，4=仅S4
+  bond_lookback: 5              # 最近 N 根内出现过粘合即可；1=只认突破当天仍粘合
+  breakout_buffer: 0.0          # 收盘需高于均线簇顶部的额外幅度，0.01=高出1%
+  high_lookback: 120
+  high_pos_cap: 0.85            # 收盘须低于 120 日高点的这个比例
+  high_field: close             # close=最高收盘；high=最高价
+  year_floor: 0.90              # 收盘 > MA250 × 这个数
+  slope_lag: 5                  # S4 长均线相对几根之前上行
+  ema_fast: 5
+  ema_mid: 13
+  ema_trend: 55
+  ema_s3: 125
+  ema_long: 250
+  ma_fast: 5
+  ma_10: 10
+  ma_20: 20
+  ma_30: 30
+  ma_60: 60
+  ma_120: 120
+  ma_250: 250
+  macd_fast: 12
+  macd_slow: 26
+  macd_signal: 9
+  use_half_year: 1              # 1=要求收盘站上MA120，0=关闭
+  use_year_floor: 1             # 1=启用年线地板，0=关闭
+  use_trend: 1                  # 1=要求站上且MA60不下降，0=关闭
+  use_high_filter: 1            # 1=排除接近区间高点，0=关闭
+  use_volume: 1                 # 1=要求放量，0=关闭
+  use_bull: 1                   # 1=要求阳线且达到最小涨幅，0=关闭
+  use_macd: 1                   # 1=要求MACD动能，0=关闭
+  single_cap: 0.60            # 单票仓位上限（占权益）
+  exit_mode: rr               # macd=DEA 上穿 DIF；rr=固定盈亏比
+  stop_pct: 0.05                # 仅 rr：收盘跌破成交价的这个比例
+  target_pct: 0.50              # 仅 rr：收盘达到成交价的这个盈利
+  slippage: 0.001
+  initial_cash: 1000000
+  lot: 100
+
+# 20/55均线 + MACD + 250年线 策略扫描配置（scripts/ma_cross_strategy.py）
+ma_cross_scan:
+  ma_fast: 20
+  ma_slow: 55
+  ma_trend: 250
+  macd_fast: 12
+  macd_slow: 26
+  macd_signal: 9
+  lookback_years: 2.0           # 扫描最近 N 年日线
+  filter_st: true
+  min_bars: 260
+
